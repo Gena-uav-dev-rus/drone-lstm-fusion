@@ -10,7 +10,7 @@ def generate_launch_description():
         output='screen'
     )
 
-    # Camera bridge — стартует через 5 сек после агента
+    # Camera bridge
     camera_bridge = TimerAction(
         period=5.0,
         actions=[
@@ -43,8 +43,22 @@ def generate_launch_description():
         ]
     )
 
+    # Gazebo → ros2_orb_slam3 драйвер
+    mono_driver = TimerAction(
+        period=7.0,
+        actions=[
+            Node(
+                package='drone_bringup',
+                executable='gazebo_mono_driver',
+                name='gazebo_mono_driver',
+                output='screen'
+            )
+        ]
+    )
+
     return LaunchDescription([
         xrce_agent,
         camera_bridge,
         imu_bridge,
+        mono_driver,
     ])
