@@ -1,0 +1,13 @@
+build/
+install/
+log/
+__pycache__/
+*.pyc
+*.bag
+*.db3
+*.pt
+*.pth
+*.onnx
+training/datasets/
+.vscode/
+.idea/
