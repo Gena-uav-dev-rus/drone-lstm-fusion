@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>drone_bringup</name>
+  <version>0.0.1</version>
+  <description>Launch files for drone LSTM fusion stack</description>
+  <maintainer email="swaer032@gmail.com">Gena</maintainer>
+  <license>MIT</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>ros_gz_bridge</depend>
+  <depend>ros2_orb_slam3</depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
