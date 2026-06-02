@@ -10,7 +10,7 @@ Autonomous quadcopter with neural network sensor fusion.
 - LSTM adaptive EKF
 
 ## Stages
-- [ ] Stage 0: Base installation
+- [x] Stage 0: Base installation
 - [ ] Stage 1: ORB-SLAM3
 - [ ] Stage 2: Depth Anything v2
 - [ ] Stage 3: GlobalFusionNode
