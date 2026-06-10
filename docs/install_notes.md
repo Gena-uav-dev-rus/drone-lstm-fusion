@@ -43,3 +43,38 @@
 ### QGroundControl
 - wget https://github.com/mavlink/qgroundcontrol/releases/download/v4.3.0/QGroundControl.AppImage
 - export DISPLAY=:99 перед запуском
+
+---
+
+## Target Hardware
+
+### Desktop (симуляция и разработка)
+- CPU: 4+ ядра x86
+- RAM: 16GB рекомендуется (8GB минимум)
+- GPU: NVIDIA GTX 1060+ 6GB VRAM
+- SSD: 100GB+
+- OS: Ubuntu 24.04 LTS
+
+### Companion Computer (на дроне)
+- Jetson Orin Nano 8GB
+- CUDA 1024 cores
+- Вес: 45г
+- OS: JetPack 6.x (Ubuntu 22.04 base)
+
+## Docker образы (план)
+
+### drone-sim (Desktop)
+- Gazebo Harmonic + PX4 SITL
+- ROS 2 Jazzy full
+- ORB-SLAM3 + SuperPoint
+- Depth Anything v2
+- LSTM training (PyTorch)
+- RViz2 + Foxglove
+
+### drone-companion (Jetson Orin Nano)
+- ROS 2 Jazzy headless
+- ORB-SLAM3 + SuperPoint (CUDA)
+- Depth Anything v2 Small (TensorRT)
+- LSTM inference (TorchScript)
+- GlobalFusionNode (C++ EKF)
+- Offboard controller
