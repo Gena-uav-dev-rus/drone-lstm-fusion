@@ -78,3 +78,13 @@
 - LSTM inference (TorchScript)
 - GlobalFusionNode (C++ EKF)
 - Offboard controller
+
+### Desktop — запуск стека
+- DISPLAY=:0 обязательно перед запуском
+- Газебо открывается с GUI через Anydesk
+- QGroundControl: sudo usermod -a -G dialout sqwaer
+- COM_RC_IN_MODE=1 для виртуального джойстика
+- GPS fix нужен для стабильного полёта
+
+### Успешный тест
+- Дрон взлетел, держал высоту, сел по команде QGC ✅
