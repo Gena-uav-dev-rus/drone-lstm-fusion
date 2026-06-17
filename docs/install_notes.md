@@ -218,3 +218,17 @@ ROS 2 cv_bridge требует numpy<2, а Depth Anything зависимости
     source ~/depth_anything_venv/bin/activate
     ros2 run depth_anything_ros2 depth_node.py
   (порядок source важен — сначала ROS2, потом venv)
+
+### MILESTONE: depth_anything_ros2 нода работает ✅
+- /depth/altitude публикуется на ~6.3 Hz, реальные метрические значения (11-16м
+  при полёте над baylands на текущей высоте)
+- /depth/image — визуализация colormap для отладки
+- Запуск: source ROS2 setup → source venv (порядок важен)
+- GPU inference через CUDA, ~6 FPS достаточно для altitude estimation
+  (не критичный по латентности контур, в отличие от VIO)
+
+### Этап 2 — итог
+- Depth Anything V2 metric (VKITTI Small) интегрирован в ROS 2 ✅
+- /depth/altitude и /depth/image публикуются ✅
+- Venv-решение работает для desktop разработки ✅
+- TensorRT C++ нода — отложено до этапа подготовки Jetson деплоя
