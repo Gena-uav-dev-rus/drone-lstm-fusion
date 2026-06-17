@@ -199,3 +199,22 @@ ROS 2 cv_bridge требует numpy<2, а Depth Anything зависимости
 - python3-opencv из apt отстаёт по версиям, без CUDA-ускорения
 - На Jetson JetPack даёт свои привязанные версии CUDA/cuDNN — venv-подход менее предсказуем
 - TensorRT C++ — стандартный паттерн в продакшен робототехнике, не костыль
+
+### Этап 2 — checkpoint перед перезагрузкой
+- Решение по venv: python3 -m venv ~/depth_anything_venv --system-site-packages
+  Работает: cv2 4.13.0, rclpy ok, numpy 1.26.4, torch 2.5.1+cu121 CUDA=True все вместе
+- Создан пакет depth_anything_ros2:
+  - package.xml, CMakeLists.txt (ament_python_install_package)
+  - depth_anything_ros2/depth_node.py — подписка /camera, публикует:
+    /depth/altitude (Float32, медиана нижней трети кадра в метрах)
+    /depth/image (визуализация colormap INFERNO, каждый 5й кадр)
+  - Картинка конвертируется вручную (np.frombuffer) без cv_bridge — избегаем
+    лишней зависимости от numpy-версии cv_bridge внутри этой ноды
+  - Модель: VKITTI Small, путь хардкоднут ~/Depth-Anything-V2/metric_depth
+- colcon build прошёл успешно (чистый Python пакет, без компиляции)
+- СЛЕДУЮЩИЙ ШАГ ПОСЛЕ РЕБУТА: запустить ноду и проверить что публикует
+  Команда запуска:
+    source ~/drone-lstm-fusion/ros2_ws/install/setup.bash
+    source ~/depth_anything_venv/bin/activate
+    ros2 run depth_anything_ros2 depth_node.py
+  (порядок source важен — сначала ROS2, потом venv)
