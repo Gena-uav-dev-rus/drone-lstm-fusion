@@ -232,3 +232,21 @@ ROS 2 cv_bridge требует numpy<2, а Depth Anything зависимости
 - /depth/altitude и /depth/image публикуются ✅
 - Venv-решение работает для desktop разработки ✅
 - TensorRT C++ нода — отложено до этапа подготовки Jetson деплоя
+
+### Этап 3 — checkpoint перед перезагрузкой
+- Пакет global_fusion создан и собирается ✅
+  - ekf.hpp / ekf.cpp — error-state EKF, 15-state (pos+vel+orient+accel_bias+gyro_bias)
+  - global_fusion_node.cpp — подписки /imu, /fmu/out/vehicle_gps_position,
+    /vio/odometry, /depth/altitude; публикует /global_odometry
+  - ФИКС: Eigen3 не подцеплялся через find_package — добавлен
+    include_directories(${EIGEN3_INCLUDE_DIR}) в CMakeLists.txt
+  - ФИКС: QoS несовместимость на /fmu/out/vehicle_gps_position (PX4 публикует
+    BEST_EFFORT) — добавлен rclcpp::QoS px4_qos(10); px4_qos.best_effort();
+- GPS origin захват работает: "GPS origin set: lat=37.412174 lon=-121.998879 alt=38.94"
+- ПРОБЛЕМА на момент чекпоинта: при одновременном запуске ORB-SLAM3 + Depth
+  Anything (GPU) + global_fusion + Gazebo, система тормозит — камера упала
+  с 24-30fps до 3fps, IMU топик не отвечал на echo/hz (вероятно из-за лагов
+  real_time_factor в Gazebo, не баг в коде)
+- СЛЕДУЮЩИЙ ШАГ ПОСЛЕ РЕБУТА: поднять стек заново, проверить нагрузку
+  (htop/nvidia-smi), возможно нужно снизить частоту Depth Anything ноды
+  или вообще не гонять ORB-SLAM3+Depth одновременно на одном GPU без оптимизации
