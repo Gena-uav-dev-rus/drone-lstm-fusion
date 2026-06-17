@@ -171,3 +171,31 @@
 - Кадр с камеры дрона (480x640) → depth map в метрах
 - На высоте полёта над baylands: depth 5.3м - 17.2м, разумные значения
 - GPU P106-100 используется для inference
+
+---
+
+## Архитектурное решение: Depth Anything — Desktop vs Production
+
+### Проблема
+ROS 2 cv_bridge требует numpy<2, а Depth Anything зависимости (opencv-python, gradio)
+требуют numpy>=2. Прямой конфликт в одном Python окружении.
+
+### Desktop (этап разработки) — venv костыль
+- Используем для быстрой итерации и проверки логики
+- python3 -m venv ~/depth_anything_venv (полная изоляция, без --system-site-packages)
+- PyTorch CUDA + numpy<2 внутри venv
+- ROS 2 нода (rclpy) работает в системном Python отдельно
+- Обмен данными между процессами — НЕ финальное решение, только для тестов
+
+### Production (Jetson Orin Nano) — TensorRT, без Python
+- ПРАВИЛЬНЫЙ путь для финального деплоя на companion computer
+- Конвертация: PyTorch (.pth) → ONNX (.onnx) → TensorRT (.engine)
+- C++ ROS 2 нода грузит .engine через TensorRT C++ API
+- Нет Python в runtime → нет конфликта numpy/venv вообще
+- Референс: github.com/ika-rwth-aachen/ros2-depth-anything-v3-trt
+- Тот же паттерн что GlobalFusionNode (чистый C++ ROS 2 узел)
+
+### Почему не "общий venv с системными site-packages"
+- python3-opencv из apt отстаёт по версиям, без CUDA-ускорения
+- На Jetson JetPack даёт свои привязанные версии CUDA/cuDNN — venv-подход менее предсказуем
+- TensorRT C++ — стандартный паттерн в продакшен робототехнике, не костыль
