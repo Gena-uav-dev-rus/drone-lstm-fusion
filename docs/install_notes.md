@@ -145,3 +145,29 @@
 - Камера 45° forward-down в Gazebo ✅
 - Baylands мир — достаточно фич для tracking ✅
 - VIO одометрия публикуется в /vio/odometry ✅
+
+---
+
+## Этап 2 — Depth Anything v2
+
+### Установка
+- Репо: github.com/DepthAnything/Depth-Anything-V2
+- ФИКС критичный: numpy конфликт между ROS2/cv_bridge (numpy<2) и opencv-python/gradio (numpy>=2)
+  → изолируем Depth Anything в отдельный venv:
+  python3 -m venv ~/depth_anything_venv
+  source ~/depth_anything_venv/bin/activate
+  pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+  pip install "numpy<2" opencv-python matplotlib
+- Системный Python должен остаться на numpy<2 для cv_bridge:
+  pip3 install "numpy<2" --break-system-packages
+
+### Модель — Metric VKITTI Small (outdoor)
+- Веса: huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Small
+- Путь: ~/Depth-Anything-V2/metric_depth/checkpoints/depth_anything_v2_metric_vkitti_vits.pth
+- max_depth=80 (outdoor), encoder='vits' (Small, для real-time)
+- Indoor вариант (Hypersim) существует отдельно если понадобится
+
+### Тест успешен ✅
+- Кадр с камеры дрона (480x640) → depth map в метрах
+- На высоте полёта над baylands: depth 5.3м - 17.2м, разумные значения
+- GPU P106-100 используется для inference
