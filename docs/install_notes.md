@@ -129,3 +129,19 @@
 - Скрипт: scripts/start_sim.sh
 - Запускает всё через tmux с правильными задержками
 - 6 окон: agent, gazebo, px4, bridge, slam, qgc
+
+### MILESTONE: /vio/odometry publisher работает ✅
+- Добавлен nav_msgs::msg::Odometry publisher в MonocularMode
+- Публикуется только когда state==2 (OK), не публикует мусор при потере трекинга
+- Топик: /vio/odometry, ~11 Hz
+- Фикс бага: settingsFilePath накапливался при повторных handshake звонках
+  → добавлена baseSettingsFilePath, путь строится заново каждый раз
+- nav_msgs добавлен в package.xml (build_depend/exec_depend) и CMakeLists.txt
+  (THIS_PACKAGE_INCLUDE_DEPENDS и find_package)
+
+### Этап 1 — итог
+- ORB-SLAM3 v1.0 ✅
+- ros2_orb_slam3 ROS2 wrapper ✅
+- Камера 45° forward-down в Gazebo ✅
+- Baylands мир — достаточно фич для tracking ✅
+- VIO одометрия публикуется в /vio/odometry ✅
