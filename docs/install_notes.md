@@ -272,3 +272,25 @@ ROS 2 cv_bridge требует numpy<2, а Depth Anything зависимости
 - Источники: IMU (predict), GPS/VIO/Depth (sequential update) ✅
 - /global_odometry публикуется, готов для PX4 OFFBOARD (следующий шаг) ✅
 - R-матрицы пока фиксированные константы — подключение LSTM variance на Этапе 4
+
+### MILESTONE: GroundTruthPlugin (Gazebo C++ plugin) работает ✅
+- Создан собственный системный плагин Gazebo для получения точного ground truth
+  позиции/скорости дрона (для обучения LSTM на Этапе 4)
+- Путь: ros2_ws/src/ground_truth_plugin/ (ament_cmake пакет)
+- Ищет модель по имени через ECM (model_name настраивается через SDF тег
+  <model_name>, по умолчанию x500_mono_cam_0), публикует gz.msgs.Odometry
+  на топик /ground_truth/<model_name>/odometry
+- КРИТИЧНО: обычный cmake НЕ находит gz-* конфиги напрямую — они спрятаны
+  в /opt/ros/jazzy/opt/gz_*_vendor/lib/cmake/. Решение — собирать ТОЛЬКО
+  через colcon build внутри ros2_ws (он сам подхватывает vendor prefix paths)
+- Точные cmake target имена (на ROS 2 Jazzy): gz-sim8, gz-plugin2 (+ register
+  компонент), gz-msgs10, gz-transport13
+- Подключение к миру: добавлен <plugin> тег в конец baylands.sdf перед </world>
+- Переменная окружения нужна: GZ_SIM_SYSTEM_PLUGIN_PATH должна включать
+  путь к install/ground_truth_plugin/lib (добавлено в ~/.bashrc)
+- Почему не использовали готовый /world/.../pose/info (Pose_V): даёт позы
+  ВСЕХ объектов мира без имён в массиве, пришлось бы угадывать индекс дрона —
+  хрупко при изменении мира. Собственный плагин надёжнее.
+- Почему не /model/.../odometry_with_covariance: топик существовал в gz topic -l
+  но без активного publisher (нет OdometryPublisher system подключенного
+  к этой конкретной модели) — наш плагин закрывает эту дыру
