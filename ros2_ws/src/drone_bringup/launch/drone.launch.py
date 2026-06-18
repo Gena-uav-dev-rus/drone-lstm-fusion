@@ -36,7 +36,10 @@ def generate_launch_description():
                 executable='parameter_bridge',
                 name='imu_bridge',
                 arguments=[
-                    '/imu@sensor_msgs/msg/Imu@gz.msgs.IMU',
+                    '/world/baylands/model/x500_mono_cam_0/link/base_link/sensor/imu_sensor/imu@sensor_msgs/msg/Imu@gz.msgs.IMU',
+                ],
+                remappings=[
+                    ('/world/baylands/model/x500_mono_cam_0/link/base_link/sensor/imu_sensor/imu', '/imu'),
                 ],
                 output='screen'
             )

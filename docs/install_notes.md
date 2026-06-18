@@ -250,3 +250,25 @@ ROS 2 cv_bridge требует numpy<2, а Depth Anything зависимости
 - СЛЕДУЮЩИЙ ШАГ ПОСЛЕ РЕБУТА: поднять стек заново, проверить нагрузку
   (htop/nvidia-smi), возможно нужно снизить частоту Depth Anything ноды
   или вообще не гонять ORB-SLAM3+Depth одновременно на одном GPU без оптимизации
+
+### MILESTONE: GlobalFusionNode полностью работает ✅
+- ФИКС критичный: /imu bridge слушал несуществующий короткий топик "/imu" в Gazebo.
+  Реальный source топик: /world/<world_name>/model/<model>/link/base_link/sensor/imu_sensor/imu
+  Добавлен remapping в drone.launch.py: длинный путь -> /imu
+  (искать через `gz topic -l` если переходишь на другую модель/мир — имя топика
+  зависит от имени world и model)
+- ФИКС производительности: Gazebo headless (-s флаг, без GUI) экономит >50% CPU
+  vs полный GUI режим. Создан scripts/start_sim_headless.sh для тяжёлых прогонов
+  с полным стеком (ORB-SLAM3 + Depth Anything + global_fusion одновременно)
+- ФИКС производительности: добавлен троттлинг в depth_node.py — инференс раз в
+  N=5 кадров камеры вместо каждого кадра, снижает нагрузку depth ноды
+- /global_odometry публикуется на ~78Hz (привязан к частоте IMU predict, 85Hz)
+- EKF не расходится, значения позиции/скорости/ориентации в разумных пределах
+  при висении дрона в воздухе
+
+### Этап 3 — итог
+- global_fusion package: ekf.hpp/ekf.cpp (15-state error-state EKF) + 
+  global_fusion_node.cpp (ROS2 wrapper) ✅
+- Источники: IMU (predict), GPS/VIO/Depth (sequential update) ✅
+- /global_odometry публикуется, готов для PX4 OFFBOARD (следующий шаг) ✅
+- R-матрицы пока фиксированные константы — подключение LSTM variance на Этапе 4

@@ -58,9 +58,14 @@ class DepthAnythingNode(Node):
         self.pub_depth_image = self.create_publisher(Image, '/depth/image', 10)
 
         self.frame_count = 0
+        self.process_every_n = 5  # инференс раз в N кадров камеры, остальные пропускаем
         self.get_logger().info('DepthAnythingNode ready, waiting for frames...')
 
     def img_callback(self, msg: Image):
+        self.frame_count += 1
+        if self.frame_count % self.process_every_n != 0:
+            return  # троттлинг — не гоняем нейросеть на каждый кадр
+
         try:
             # Ручная конвертация без cv_bridge (избегаем версии конфликтов)
             img = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.width, 3)
@@ -81,9 +86,8 @@ class DepthAnythingNode(Node):
         alt_msg.data = altitude_estimate
         self.pub_altitude.publish(alt_msg)
 
-        # Публикуем визуализацию каждый 5-й кадр (не грузим топик зря)
-        self.frame_count += 1
-        if self.frame_count % 5 == 0:
+        # Визуализацию публикуем всегда когда дошли до инференса (троттлинг уже применён выше)
+        if True:
             depth_norm = (depth / max(depth.max(), 1e-6) * 255).astype(np.uint8)
             depth_vis = cv2.applyColorMap(depth_norm, cv2.COLORMAP_INFERNO)
 
