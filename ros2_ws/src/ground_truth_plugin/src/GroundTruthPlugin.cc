@@ -41,17 +41,17 @@ void GroundTruthPlugin::PostUpdate(
     if (info.paused) return;
 
     if (model_entity_ == gz::sim::kNullEntity) {
-        // Модель могла появиться позже Configure() — пробуем найти снова
         auto entities = ecm.EntitiesByComponents(gz::sim::components::Name(model_name_));
         if (entities.empty()) return;
         const_cast<GroundTruthPlugin*>(this)->model_entity_ = entities[0];
     }
 
     auto poseComp = ecm.Component<gz::sim::components::Pose>(model_entity_);
-    auto linVelComp = ecm.Component<gz::sim::components::LinearVelocity>(model_entity_);
-    auto angVelComp = ecm.Component<gz::sim::components::AngularVelocity>(model_entity_);
-
     if (!poseComp) return;
+
+    const auto &pose = poseComp->Data();
+    gz::math::Vector3d position = pose.Pos();
+    gz::math::Quaterniond orientation = pose.Rot();
 
     gz::msgs::Odometry msg;
     auto stamp = msg.mutable_header()->mutable_stamp();
@@ -60,25 +60,43 @@ void GroundTruthPlugin::PostUpdate(
     stamp->set_sec(simTimeSec);
     stamp->set_nsec(simTimeNsec);
 
-    const auto &pose = poseComp->Data();
-    msg.mutable_pose()->mutable_position()->set_x(pose.Pos().X());
-    msg.mutable_pose()->mutable_position()->set_y(pose.Pos().Y());
-    msg.mutable_pose()->mutable_position()->set_z(pose.Pos().Z());
-    msg.mutable_pose()->mutable_orientation()->set_w(pose.Rot().W());
-    msg.mutable_pose()->mutable_orientation()->set_x(pose.Rot().X());
-    msg.mutable_pose()->mutable_orientation()->set_y(pose.Rot().Y());
-    msg.mutable_pose()->mutable_orientation()->set_z(pose.Rot().Z());
+    msg.mutable_pose()->mutable_position()->set_x(position.X());
+    msg.mutable_pose()->mutable_position()->set_y(position.Y());
+    msg.mutable_pose()->mutable_position()->set_z(position.Z());
+    msg.mutable_pose()->mutable_orientation()->set_w(orientation.W());
+    msg.mutable_pose()->mutable_orientation()->set_x(orientation.X());
+    msg.mutable_pose()->mutable_orientation()->set_y(orientation.Y());
+    msg.mutable_pose()->mutable_orientation()->set_z(orientation.Z());
 
-    if (linVelComp) {
-        msg.mutable_twist()->mutable_linear()->set_x(linVelComp->Data().X());
-        msg.mutable_twist()->mutable_linear()->set_y(linVelComp->Data().Y());
-        msg.mutable_twist()->mutable_linear()->set_z(linVelComp->Data().Z());
+    // Вычисляем скорость через численное дифференцирование позиции,
+    // так как Gazebo ECM не заполняет LinearVelocity/AngularVelocity
+    // компоненты автоматически без отдельной системы.
+    if (has_prev_) {
+        double dt = std::chrono::duration<double>(info.simTime - prev_sim_time_).count();
+        if (dt > 1e-6) {
+            gz::math::Vector3d lin_vel = (position - prev_position_) / dt;
+
+            msg.mutable_twist()->mutable_linear()->set_x(lin_vel.X());
+            msg.mutable_twist()->mutable_linear()->set_y(lin_vel.Y());
+            msg.mutable_twist()->mutable_linear()->set_z(lin_vel.Z());
+
+            // Угловая скорость через разницу quaternion (small-angle approx)
+            gz::math::Quaterniond dq = orientation * prev_orientation_.Inverse();
+            gz::math::Vector3d ang_vel(
+                2.0 * dq.X() / dt,
+                2.0 * dq.Y() / dt,
+                2.0 * dq.Z() / dt);
+
+            msg.mutable_twist()->mutable_angular()->set_x(ang_vel.X());
+            msg.mutable_twist()->mutable_angular()->set_y(ang_vel.Y());
+            msg.mutable_twist()->mutable_angular()->set_z(ang_vel.Z());
+        }
     }
-    if (angVelComp) {
-        msg.mutable_twist()->mutable_angular()->set_x(angVelComp->Data().X());
-        msg.mutable_twist()->mutable_angular()->set_y(angVelComp->Data().Y());
-        msg.mutable_twist()->mutable_angular()->set_z(angVelComp->Data().Z());
-    }
+
+    prev_position_ = position;
+    prev_orientation_ = orientation;
+    prev_sim_time_ = info.simTime;
+    const_cast<GroundTruthPlugin*>(this)->has_prev_ = true;
 
     pub_.Publish(msg);
 }
