@@ -300,3 +300,15 @@ ROS 2 cv_bridge требует numpy<2, а Depth Anything зависимости
 - Отрицательный знак (-0.7854, -1.047) давал камеру назад-вверх (видны пропеллеры/небо)
 - Положительный знак +1.047 рад = 60° вниз — видна земля/дорожки/текстуры
 - Файл: ~/PX4-Autopilot/Tools/simulation/gz/models/x500_mono_cam/model.sdf
+
+### MILESTONE: Dataset collector работает ✅
+- Пакет lstm_data_collector, нода collector_node.py
+- Собирает синхронно: ground truth + GPS + VIO + Depth → CSV
+- 500 сэмплов за ~33 секунды (~15 Hz, привязан к частоте ground truth топика)
+- Запуск: ros2 run lstm_data_collector collector_node.py
+    --ros-args -p output_file:=/tmp/lstm_dataset.csv -p max_samples:=500
+- ВАЖНО: перед запуском нужен ground truth bridge:
+    ros2 run ros_gz_bridge parameter_bridge
+    /ground_truth/x500_mono_cam_0/odometry@nav_msgs/msg/Odometry@gz.msgs.Odometry
+- Для полноценного датасета: собирать 50000+ сэмплов при разных условиях
+  (разные высоты, скорости, направления движения)
