@@ -312,3 +312,39 @@ ROS 2 cv_bridge требует numpy<2, а Depth Anything зависимости
     /ground_truth/x500_mono_cam_0/odometry@nav_msgs/msg/Odometry@gz.msgs.Odometry
 - Для полноценного датасета: собирать 50000+ сэмплов при разных условиях
   (разные высоты, скорости, направления движения)
+
+### MILESTONE: LSTM noise estimators обучены успешно ✅
+- ВАЖНЫЕ НАХОДКИ И ФИКСЫ при подготовке датасета:
+  1. GPS north/east оси были перепутаны с gt_x/gt_y (ENU vs NED путаница) —
+     gps_east соответствует gt_x, gps_north соответствует gt_y в нашей
+     Gazebo ENU world frame конвенции
+  2. VIO (ORB-SLAM3) живёт в собственной произвольной системе координат,
+     не совпадающей с world frame — нужно align через Kabsch algorithm
+     (rotation+translation), не просто offset
+  3. VIO дрейфует без loop closure — абсолютный align по всей траектории
+     даёт огромные ложные residuals на дальних участках. Решение: периодический
+     re-align каждые window_size=200 сэмплов (имитирует реальное поведение EKF,
+     где VIO постоянно корректируется внешними источниками)
+  4. Train/val split ДОЛЖЕН быть случайным (shuffled), не последовательным по
+     времени — последовательный сплит может разделить полёт на физически разные
+     условия (например высота в начале vs в конце), создавая ложный distribution
+     shift и резкий разрыв train/val loss, маскирующий реальное переобучение
+  5. Этот же VIO frame alignment баг исправлен и в global_fusion_node.cpp
+     (vioCallback теперь выравнивает VIO->world через rotation+translation
+     transform, вычисленный при первом VIO сообщении после получения GPS origin)
+
+### Финальные результаты обучения (50000 сэмплов, 50 эпох)
+- GPS LSTM:   train=25.2 val=21.3 (м², ~4.6м RMS)
+- VIO LSTM:   train=1.38 val=1.17 (м², ~1.1м RMS)
+- Depth LSTM: train=91.6 val=82.3 (м², ~9м RMS)
+- Train≈val везде — модели обобщают, не переобучены
+
+### Этап 4 — прогресс
+- ground_truth_plugin (Gazebo C++) ✅
+- lstm_data_collector (датасет ROS2 нода) ✅
+- train_lstm.py (PyTorch обучение трёх LSTM) ✅
+- VIO frame alignment в global_fusion_node.cpp ✅
+- СЛЕДУЮЩИЙ ШАГ: ROS2 inference ноды (Python rclpy) для трёх LSTM,
+  публикующие /lstm_noise/gps_variance, /lstm_noise/vio_variance,
+  /lstm_noise/depth_variance, и подключение к global_fusion_node через
+  setGpsPositionVariance/setVioPositionVariance/setDepthVariance setters

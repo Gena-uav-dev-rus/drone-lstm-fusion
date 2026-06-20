@@ -73,12 +73,52 @@ class SensorNoiseDataset(Dataset):
 
 # ─── Подготовка данных ─────────────────────────────────────────────────────────
 
+def kabsch_align(vio_xyz, gt_xyz):
+    """Находит оптимальный rotation+translation от vio_xyz к gt_xyz (Kabsch algorithm)."""
+    vio_centroid = vio_xyz.mean(axis=0)
+    gt_centroid = gt_xyz.mean(axis=0)
+
+    vio_centered = vio_xyz - vio_centroid
+    gt_centered = gt_xyz - gt_centroid
+
+    H = vio_centered.T @ gt_centered
+    U, S, Vt = np.linalg.svd(H)
+    d = np.sign(np.linalg.det(Vt.T @ U.T))
+    D = np.diag([1, 1, d])
+    R = Vt.T @ D @ U.T
+
+    t = gt_centroid - R @ vio_centroid
+    return R, t
+
+
+def align_vio_to_world(vio_xyz, gt_xyz, window_size=200):
+    """
+    VIO (ORB-SLAM3) живёт в собственной произвольной системе координат,
+    привязанной к точке инициализации трекинга, и дрейфует со временем без
+    loop closure. Периодически переоцениваем transform каждые window_size
+    сэмплов — имитирует реальное поведение EKF, где VIO постоянно
+    подкорректируется внешними источниками (GPS), вместо накопления
+    всего дрейфа за всю траекторию полёта.
+    """
+    n = len(vio_xyz)
+    aligned = np.zeros_like(vio_xyz)
+
+    for start in range(0, n, window_size):
+        end = min(start + window_size, n)
+        R, t = kabsch_align(vio_xyz[start:end], gt_xyz[start:end])
+        aligned[start:end] = (R @ vio_xyz[start:end].T).T + t
+
+    return aligned
+
+
 def prepare_data(df):
     """
     Вычисляем реальные ошибки (variance target) для каждого источника.
     GPS позиция в lat/lon, конвертируем в метры относительно первой точки.
     """
     # GPS: конвертация lat/lon -> метры (плоская аппроксимация)
+    # ВАЖНО: Gazebo world frame здесь ENU (x=East, y=North), поэтому
+    # gps_east сопоставляется с gt_x, а gps_north — с gt_y (оси НЕ как в NED!)
     EARTH_R = 6378137.0
     lat0 = df['gps_lat'].iloc[0]
     lon0 = df['gps_lon'].iloc[0]
@@ -88,14 +128,19 @@ def prepare_data(df):
     df['gps_east'] = np.deg2rad(df['gps_lon'] - lon0) * EARTH_R * np.cos(lat_rad)
     df['gps_down'] = -(df['gps_alt'] - df['gps_alt'].iloc[0])
 
-    # Ошибки = (измерение - ground truth)^2 усреднённые по осям
-    gps_err = ((df['gps_north'] - df['gt_x'])**2 +
-               (df['gps_east']  - df['gt_y'])**2 +
+    # Ошибки = (измерение - ground truth)^2, ENU-выровненные оси
+    gps_err = ((df['gps_east']  - df['gt_x'])**2 +
+               (df['gps_north'] - df['gt_y'])**2 +
                (df['gps_down']  - df['gt_z'])**2) / 3.0
 
-    vio_err = ((df['vio_x'] - df['gt_x'])**2 +
-               (df['vio_y'] - df['gt_y'])**2 +
-               (df['vio_z'] - df['gt_z'])**2) / 3.0
+    # Выравниваем VIO с world frame через offset (см. align_vio_to_world)
+    vio_xyz = df[['vio_x', 'vio_y', 'vio_z']].values
+    gt_xyz = df[['gt_x', 'gt_y', 'gt_z']].values
+    vio_aligned = align_vio_to_world(vio_xyz, gt_xyz)
+
+    vio_err = ((vio_aligned[:, 0] - df['gt_x'])**2 +
+               (vio_aligned[:, 1] - df['gt_y'])**2 +
+               (vio_aligned[:, 2] - df['gt_z'])**2) / 3.0
 
     depth_err = (df['depth_altitude'] - df['gt_z'].abs())**2
 
@@ -128,10 +173,22 @@ def train_one(name, features_raw, targets_raw, output_dir):
     features = scaler.fit_transform(features_raw)
     targets = targets_raw.reshape(-1, 1)
 
-    # Сплит train/val (80/20)
-    split = int(len(features) * 0.8)
-    train_ds = SensorNoiseDataset(features[:split], targets[:split])
-    val_ds   = SensorNoiseDataset(features[split:], targets[split:])
+    # Сплит train/val (80/20) — СЛУЧАЙНЫЙ по окнам последовательностей,
+    # не последовательный по времени. Последовательный сплит делит полёт
+    # на разные физические условия (например высота в начале vs в конце),
+    # что создаёт ложный distribution shift между train и val.
+    n_windows = len(features) - SEQ_LEN
+    indices = np.arange(n_windows)
+    np.random.seed(42)
+    np.random.shuffle(indices)
+
+    split = int(n_windows * 0.8)
+    train_indices = indices[:split]
+    val_indices = indices[split:]
+
+    full_ds = SensorNoiseDataset(features, targets)
+    train_ds = torch.utils.data.Subset(full_ds, train_indices)
+    val_ds = torch.utils.data.Subset(full_ds, val_indices)
 
     train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
     val_dl   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False)

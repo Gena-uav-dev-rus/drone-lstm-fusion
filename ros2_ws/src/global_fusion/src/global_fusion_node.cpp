@@ -122,16 +122,43 @@ private:
     }
 
     void vioCallback(const nav_msgs::msg::Odometry::SharedPtr msg) {
-        Eigen::Vector3d position(
+        Eigen::Vector3d vio_position(
             msg->pose.pose.position.x,
             msg->pose.pose.position.y,
             msg->pose.pose.position.z);
 
-        Eigen::Quaterniond orientation(
+        Eigen::Quaterniond vio_orientation(
             msg->pose.pose.orientation.w,
             msg->pose.pose.orientation.x,
             msg->pose.pose.orientation.y,
             msg->pose.pose.orientation.z);
+
+        // VIO (ORB-SLAM3) живёт в собственной произвольной системе координат,
+        // привязанной к точке инициализации трекинга, а не к world frame.
+        // Выравниваем VIO-frame с world-frame один раз, при первом VIO сообщении
+        // после того как EKF уже имеет разумную оценку позиции (например от GPS).
+        if (!vio_aligned_) {
+            // Ждём пока EKF получит хотя бы один GPS fix для разумной точки отсчёта
+            if (!gps_origin_set_) {
+                return;  // пропускаем VIO обновления пока нет GPS привязки
+            }
+
+            Eigen::Vector3d ekf_position = ekf_->getPosition();
+            Eigen::Quaterniond ekf_orientation = ekf_->getOrientation();
+
+            // Transform: world = vio_to_world_rotation * vio + vio_to_world_translation
+            vio_to_world_rotation_ = ekf_orientation * vio_orientation.inverse();
+            vio_to_world_translation_ = ekf_position - vio_to_world_rotation_ * vio_position;
+
+            vio_aligned_ = true;
+            RCLCPP_INFO(this->get_logger(),
+                "VIO aligned to world frame at EKF position (%.2f, %.2f, %.2f)",
+                ekf_position.x(), ekf_position.y(), ekf_position.z());
+        }
+
+        // Применяем выравнивающий transform к каждому VIO измерению
+        Eigen::Vector3d position = vio_to_world_rotation_ * vio_position + vio_to_world_translation_;
+        Eigen::Quaterniond orientation = vio_to_world_rotation_ * vio_orientation;
 
         ekf_->updateVIO(position, orientation);
     }
@@ -178,6 +205,10 @@ private:
 
     bool gps_origin_set_;
     double origin_lat_, origin_lon_, origin_alt_;
+
+    bool vio_aligned_ = false;
+    Eigen::Quaterniond vio_to_world_rotation_;
+    Eigen::Vector3d vio_to_world_translation_;
 };
 
 int main(int argc, char** argv) {

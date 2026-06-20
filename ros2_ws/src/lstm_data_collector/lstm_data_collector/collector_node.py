@@ -143,8 +143,9 @@ class DataCollectorNode(Node):
             self.csv_file.close()
 
     def destroy_node(self):
-        self.csv_file.flush()
-        self.csv_file.close()
+        if not self.csv_file.closed:
+            self.csv_file.flush()
+            self.csv_file.close()
         super().destroy_node()
 
 
