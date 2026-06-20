@@ -14,5 +14,5 @@ Autonomous quadcopter with neural network sensor fusion.
 - [x] Stage 1: ORB-SLAM3
 - [x] Stage 2: Depth Anything v2
 - [x] Stage 3: GlobalFusionNode
-- [ ] Stage 4: LSTM Noise Estimator
+- [x] Stage 4: LSTM Noise Estimator
 - [ ] Stage 5: Flight missions

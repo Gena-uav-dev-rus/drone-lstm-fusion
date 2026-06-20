@@ -24,6 +24,7 @@
 #include "global_fusion/ekf.hpp"
 
 #include <Eigen/Dense>
+#include <cmath>
 
 using std::placeholders::_1;
 
@@ -50,6 +51,20 @@ public:
 
         pub_odometry_ = this->create_publisher<nav_msgs::msg::Odometry>(
             "/global_odometry", 10);
+
+        // Подписки на LSTM-предсказанную variance (Этап 4) — заменяют
+        // фиксированные R-константы динамическими значениями в реальном времени
+        sub_gps_variance_ = this->create_subscription<std_msgs::msg::Float32>(
+            "/lstm_noise/gps_variance", 10,
+            std::bind(&GlobalFusionNode::gpsVarianceCallback, this, _1));
+
+        sub_vio_variance_ = this->create_subscription<std_msgs::msg::Float32>(
+            "/lstm_noise/vio_variance", 10,
+            std::bind(&GlobalFusionNode::vioVarianceCallback, this, _1));
+
+        sub_depth_variance_ = this->create_subscription<std_msgs::msg::Float32>(
+            "/lstm_noise/depth_variance", 10,
+            std::bind(&GlobalFusionNode::depthVarianceCallback, this, _1));
 
         // Точка отсчёта GPS (lat/lon точки взлёта), задаётся первым принятым фиксом
         gps_origin_set_ = false;
@@ -167,6 +182,29 @@ private:
         ekf_->updateDepthAltitude(static_cast<double>(msg->data));
     }
 
+    // Callbacks для LSTM noise estimator — обновляют R-матрицы EKF в реальном
+    // времени вместо фиксированных констант (см. ekf.hpp setter методы)
+    void gpsVarianceCallback(const std_msgs::msg::Float32::SharedPtr msg) {
+        double var = static_cast<double>(msg->data);
+        if (var > 0.0 && std::isfinite(var)) {
+            ekf_->setGpsPositionVariance(var);
+        }
+    }
+
+    void vioVarianceCallback(const std_msgs::msg::Float32::SharedPtr msg) {
+        double var = static_cast<double>(msg->data);
+        if (var > 0.0 && std::isfinite(var)) {
+            ekf_->setVioPositionVariance(var);
+        }
+    }
+
+    void depthVarianceCallback(const std_msgs::msg::Float32::SharedPtr msg) {
+        double var = static_cast<double>(msg->data);
+        if (var > 0.0 && std::isfinite(var)) {
+            ekf_->setDepthVariance(var);
+        }
+    }
+
     void publishFusedOdometry(const rclcpp::Time& stamp) {
         auto msg = nav_msgs::msg::Odometry();
         msg.header.stamp = stamp;
@@ -200,6 +238,10 @@ private:
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_vio_;
     rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr sub_depth_;
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odometry_;
+
+    rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr sub_gps_variance_;
+    rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr sub_vio_variance_;
+    rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr sub_depth_variance_;
 
     rclcpp::Time last_imu_time_;
 

@@ -361,3 +361,23 @@ ROS 2 cv_bridge требует numpy<2, а Depth Anything зависимости
 - Все три ноды требуют venv (torch+CUDA), запускаются после source ROS2 setup
 - Живые значения variance в разумных пределах:
   GPS: ~4-5 м², VIO: ~0.009 м² (стабильный полёт), Depth: ~110-236 м²
+
+### MILESTONE: Этап 4 ПОЛНОСТЬЮ ЗАВЕРШЁН ✅
+- global_fusion_node.cpp подключает LSTM variance в реальном времени:
+  /lstm_noise/gps_variance -> ekf_->setGpsPositionVariance()
+  /lstm_noise/vio_variance -> ekf_->setVioPositionVariance()
+  /lstm_noise/depth_variance -> ekf_->setDepthVariance()
+- Защита от невалидных значений (var > 0 && isfinite) перед применением к EKF
+- Полный контур протестирован: сырые измерения -> LSTM -> variance ->
+  EKF update -> /global_odometry, стабильно ~104-120 Hz, не расходится
+- VIO frame alignment подтверждён в логах: "VIO aligned to world frame
+  at EKF position (...)" — происходит один раз после первого GPS fix
+
+### Этап 4 — итог (полностью завершён)
+1. ground_truth_plugin (Gazebo C++) — точный teacher signal ✅
+2. lstm_data_collector — синхронный сбор GPS/VIO/Depth/ground truth в CSV ✅
+3. train_lstm.py — обучение 3 LSTM с Kabsch VIO alignment + periodic re-align +
+   случайный train/val split ✅
+4. lstm_noise_estimator — 3 inference ноды в реальном времени ✅
+5. global_fusion_node.cpp — динамическая R-матрица вместо фиксированных констант ✅
+6. VIO-to-world frame alignment добавлен и в EKF (не только в датасете) ✅
