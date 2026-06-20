@@ -348,3 +348,16 @@ ROS 2 cv_bridge требует numpy<2, а Depth Anything зависимости
   публикующие /lstm_noise/gps_variance, /lstm_noise/vio_variance,
   /lstm_noise/depth_variance, и подключение к global_fusion_node через
   setGpsPositionVariance/setVioPositionVariance/setDepthVariance setters
+
+### MILESTONE: LSTM inference ноды работают в реальном времени ✅
+- Пакет lstm_noise_estimator с тремя нодами:
+  - gps_noise_node.py -> /lstm_noise/gps_variance
+  - vio_noise_node.py -> /lstm_noise/vio_variance
+  - depth_noise_node.py -> /lstm_noise/depth_variance
+- Общий model.py модуль (NoiseEstimatorLSTM класс + load_model helper)
+- ВАЖНО: depth_noise_node использует /global_odometry скорость вместо ground truth
+  (недоступен в runtime) как context-фича — небольшое расхождение с training
+  ожидаемо и не критично
+- Все три ноды требуют venv (torch+CUDA), запускаются после source ROS2 setup
+- Живые значения variance в разумных пределах:
+  GPS: ~4-5 м², VIO: ~0.009 м² (стабильный полёт), Depth: ~110-236 м²
