@@ -393,3 +393,18 @@ ROS 2 cv_bridge требует numpy<2, а Depth Anything зависимости
   не расходится неограниченно — здоровое поведение всей системы
 - Использование: source ROS2 setup, затем
   python3 ~/drone-lstm-fusion/scripts/check_drift.py
+
+### ОТЛОЖЕНО: SuperPoint вместо ORB (из исходного плана Этап 1)
+- Репозиторий: github.com/shahram95/SuperPointSLAM3
+- Заявленные результаты paper (arXiv 2506.13089): KITTI translational error
+  4.15% -> 0.34%, EuRoC errors снижены примерно вдвое
+- Реализует: замену ORB на SuperPoint detector+descriptor, adaptive
+  non-maximal suppression (ANMS), NetVLAD-based learned loop closure
+- ПРИЧИНА ОТКЛАДЫВАНИЯ: требует LibTorch (PyTorch C++ API) сборку — отдельная,
+  не Python venv который у нас уже есть. Также репозиторий написан под
+  чистый ORB-SLAM3, не под наш ros2_orb_slam3 ROS2 wrapper с нашими патчами
+  (publisher одометрии, фикс пути настроек) — потребует мерж изменений
+- Текущая точность VIO+fusion (~1м drift, см. check_drift.py) уже хорошая
+  для продолжения к Этапу 5, SuperPoint — будущее улучшение
+- ПЛАН ВОЗВРАТА: после Этапа 5, либо при переходе на реальное железо если
+  понадобится больше робастности VIO (плохое освещение, motion blur)
