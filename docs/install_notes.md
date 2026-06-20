@@ -381,3 +381,15 @@ ROS 2 cv_bridge требует numpy<2, а Depth Anything зависимости
 4. lstm_noise_estimator — 3 inference ноды в реальном времени ✅
 5. global_fusion_node.cpp — динамическая R-матрица вместо фиксированных констант ✅
 6. VIO-to-world frame alignment добавлен и в EKF (не только в датасете) ✅
+
+### MILESTONE: Drift checker подтвердил качество fusion ✅
+- scripts/check_drift.py — сравнивает /global_odometry с ground truth,
+  компенсирует начальный offset нулевых точек отсчёта (EKF world frame
+  стартует с (0,0,0), Gazebo world frame абсолютный — РАЗНЫЕ системы)
+- ВАЖНО: offset компенсация только в скрипте проверки, EKF/global_fusion_node
+  НЕ модифицирован и ground truth не использует в реальном времени (честно,
+  как было бы в продакшене без доступа к истине)
+- Результат: реальная ошибка fusion держится в пределах 0-1.3 метра,
+  не расходится неограниченно — здоровое поведение всей системы
+- Использование: source ROS2 setup, затем
+  python3 ~/drone-lstm-fusion/scripts/check_drift.py

@@ -3,6 +3,12 @@
 Простой скрипт проверки дрейфа — сравнивает /global_odometry (EKF estimate)
 с /ground_truth/x500_mono_cam_0/odometry (истина) в реальном времени.
 
+EKF и Gazebo world frame имеют разные нули отсчёта (EKF стартует с (0,0,0)
+своей внутренней системы, Gazebo использует абсолютные world координаты).
+Этот скрипт компенсирует начальный offset автоматически по первой паре
+синхронных измерений — это чисто для удобства ВИЗУАЛИЗАЦИИ дрейфа,
+сам EKF/global_fusion_node не модифицируется и offset не "видит".
+
 Запуск:
   source ~/drone-lstm-fusion/ros2_ws/install/setup.bash
   python3 ~/drone-lstm-fusion/scripts/check_drift.py
@@ -21,6 +27,8 @@ class DriftChecker(Node):
         self.latest_gt = None
         self.latest_fused = None
 
+        self.offset = None  # (dx, dy, dz) — gt - fused в момент калибровки
+
         self.sub_gt = self.create_subscription(
             Odometry, '/ground_truth/x500_mono_cam_0/odometry', self.gt_cb, 10)
         self.sub_fused = self.create_subscription(
@@ -28,7 +36,7 @@ class DriftChecker(Node):
 
         self.timer = self.create_timer(1.0, self.print_drift)
 
-        self.get_logger().info('DriftChecker started. Printing drift every 1 sec...')
+        self.get_logger().info('DriftChecker started. Calibrating offset on first sample...')
         print(f"{'time':>8} {'gt_x':>8} {'gt_y':>8} {'gt_z':>8} | "
               f"{'fused_x':>8} {'fused_y':>8} {'fused_z':>8} | {'error_m':>8}")
 
@@ -46,20 +54,27 @@ class DriftChecker(Node):
         gt = self.latest_gt
         fused = self.latest_fused
 
-        # ВАЖНО: global_odometry — EKF state, который интегрирует IMU в своей
-        # собственной world frame, начинающейся с (0,0,0) в момент старта ноды.
-        # Ground truth — Gazebo world frame абсолютная позиция. Они совпадают
-        # по ориентации осей (NED-подобная локальная фрейм EKF), но имеют разный
-        # ноль отсчёта если EKF стартовал не из точки (0,0,0) Gazebo.
+        # Калибруем offset один раз, по первой доступной паре измерений
+        if self.offset is None:
+            self.offset = (gt.x - fused.x, gt.y - fused.y, gt.z - fused.z)
+            self.get_logger().info(
+                f'Offset calibrated: dx={self.offset[0]:.2f} '
+                f'dy={self.offset[1]:.2f} dz={self.offset[2]:.2f}')
+
+        # Применяем offset к fused перед сравнением
+        fused_x = fused.x + self.offset[0]
+        fused_y = fused.y + self.offset[1]
+        fused_z = fused.z + self.offset[2]
+
         error = math.sqrt(
-            (gt.x - fused.x)**2 +
-            (gt.y - fused.y)**2 +
-            (gt.z - fused.z)**2
+            (gt.x - fused_x)**2 +
+            (gt.y - fused_y)**2 +
+            (gt.z - fused_z)**2
         )
 
         t = time.strftime('%H:%M:%S')
         print(f"{t:>8} {gt.x:8.2f} {gt.y:8.2f} {gt.z:8.2f} | "
-              f"{fused.x:8.2f} {fused.y:8.2f} {fused.z:8.2f} | {error:8.3f}")
+              f"{fused_x:8.2f} {fused_y:8.2f} {fused_z:8.2f} | {error:8.3f}")
 
 
 def main():
@@ -71,7 +86,10 @@ def main():
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        try:
+            rclpy.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':
