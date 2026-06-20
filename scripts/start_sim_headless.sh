@@ -52,8 +52,23 @@ tmux new-window -t drone -n 'gt_bridge'
 tmux send-keys -t drone:7 'source ~/drone-lstm-fusion/ros2_ws/install/setup.bash && ros2 run ros_gz_bridge parameter_bridge /ground_truth/x500_mono_cam_0/odometry@nav_msgs/msg/Odometry@gz.msgs.Odometry' Enter
 sleep 2
 
-# 8: qgc
+# 8: lstm_gps
+tmux new-window -t drone -n 'lstm_gps'
+tmux send-keys -t drone:8 'source ~/drone-lstm-fusion/ros2_ws/install/setup.bash && source ~/depth_anything_venv/bin/activate && ros2 run lstm_noise_estimator gps_noise_node.py' Enter
+sleep 3
+
+# 9: lstm_vio
+tmux new-window -t drone -n 'lstm_vio'
+tmux send-keys -t drone:9 'source ~/drone-lstm-fusion/ros2_ws/install/setup.bash && source ~/depth_anything_venv/bin/activate && ros2 run lstm_noise_estimator vio_noise_node.py' Enter
+sleep 3
+
+# 10: lstm_depth
+tmux new-window -t drone -n 'lstm_depth'
+tmux send-keys -t drone:10 'source ~/drone-lstm-fusion/ros2_ws/install/setup.bash && source ~/depth_anything_venv/bin/activate && ros2 run lstm_noise_estimator depth_noise_node.py' Enter
+sleep 3
+
+# 11: qgc
 tmux new-window -t drone -n 'qgc'
-tmux send-keys -t drone:8 'export DISPLAY=:0 && ~/QGroundControl.AppImage 2>/dev/null' Enter
+tmux send-keys -t drone:11 'export DISPLAY=:0 && ~/QGroundControl.AppImage 2>/dev/null' Enter
 
 tmux attach -t drone
