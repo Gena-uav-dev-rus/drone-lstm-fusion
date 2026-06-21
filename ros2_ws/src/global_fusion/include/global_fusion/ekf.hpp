@@ -3,6 +3,7 @@
 
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
+#include <cmath>
 
 namespace global_fusion {
 
@@ -49,6 +50,35 @@ public:
     // чтобы избежать "heading estimate not stable" из-за расхождения с PX4
     // internal magnetometer-based yaw estimate, см. install_notes.md)
     void setInitialOrientation(const Eigen::Quaterniond& q) { nominal_orientation_ = q; }
+
+    // Постоянная лёгкая коррекция yaw от внешнего источника (PX4 internal
+    // magnetometer-based attitude estimate) — компенсирует накопление gyro
+    // bias drift по курсу, когда нет другого yaw-источника (VIO ещё не в
+    // рабочем состоянии). weight задаёт долю внешнего yaw на каждый вызов
+    // (например 0.05 = 5%), сохраняет roll/pitch от собственного EKF estimate.
+    void blendYawCorrection(const Eigen::Quaterniond& external_q, double weight) {
+        // Извлекаем yaw компонент из обоих quaternion через спроецированный
+        // на плоскость XY вектор "вперёд" — это устойчивее чем напрямую
+        // интерполировать quaternion, так как сохраняет roll/pitch нетронутыми.
+        double yaw_external = std::atan2(
+            2.0 * (external_q.w() * external_q.z() + external_q.x() * external_q.y()),
+            1.0 - 2.0 * (external_q.y() * external_q.y() + external_q.z() * external_q.z()));
+        double yaw_current = std::atan2(
+            2.0 * (nominal_orientation_.w() * nominal_orientation_.z() +
+                   nominal_orientation_.x() * nominal_orientation_.y()),
+            1.0 - 2.0 * (nominal_orientation_.y() * nominal_orientation_.y() +
+                         nominal_orientation_.z() * nominal_orientation_.z()));
+
+        // Кратчайший угловой путь (избегаем скачка через +-180 град границу)
+        double yaw_diff = yaw_external - yaw_current;
+        while (yaw_diff > M_PI) yaw_diff -= 2.0 * M_PI;
+        while (yaw_diff < -M_PI) yaw_diff += 2.0 * M_PI;
+
+        double yaw_new = yaw_current + weight * yaw_diff;
+
+        Eigen::Quaterniond yaw_rotation(Eigen::AngleAxisd(yaw_new - yaw_current, Eigen::Vector3d::UnitZ()));
+        nominal_orientation_ = (yaw_rotation * nominal_orientation_).normalized();
+    }
     Eigen::Matrix<double, STATE_DIM, STATE_DIM> getCovariance() const { return P_; }
 
     // --- Настройка R-матриц (шум измерений) ---

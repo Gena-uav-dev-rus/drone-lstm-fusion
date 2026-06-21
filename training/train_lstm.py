@@ -74,7 +74,16 @@ class SensorNoiseDataset(Dataset):
 # ─── Подготовка данных ─────────────────────────────────────────────────────────
 
 def kabsch_align(vio_xyz, gt_xyz):
-    """Находит оптимальный rotation+translation от vio_xyz к gt_xyz (Kabsch algorithm)."""
+    """
+    Находит оптимальный rotation+translation+SCALE от vio_xyz к gt_xyz
+    (Umeyama algorithm — расширение Kabsch с учётом масштаба).
+
+    ВАЖНО: монокулярный VIO (ORB-SLAM3 без знания реального размера сцены)
+    систематически даёт неверный МАСШТАБ, не только случайный шум — измерено
+    эмпирически scale~1.74x (см. scripts/measure_vio_scale.py и install_notes.md).
+    Классический Kabsch (rotation+translation only) НЕ может скомпенсировать
+    эту ошибку, поэтому используем Umeyama, который добавляет scale.
+    """
     vio_centroid = vio_xyz.mean(axis=0)
     gt_centroid = gt_xyz.mean(axis=0)
 
@@ -87,15 +96,22 @@ def kabsch_align(vio_xyz, gt_xyz):
     D = np.diag([1, 1, d])
     R = Vt.T @ D @ U.T
 
-    t = gt_centroid - R @ vio_centroid
-    return R, t
+    # Scale: отношение "разброса" gt к "разбросу" vio после поворота
+    # (стандартная формула Umeyama: var(vio) в знаменателе, trace(D@S) в числителе)
+    var_vio = (vio_centered ** 2).sum() / len(vio_xyz)
+    scale = np.trace(D @ np.diag(S)) / var_vio
+
+    t = gt_centroid - scale * R @ vio_centroid
+    return R, t, scale
 
 
 def align_vio_to_world(vio_xyz, gt_xyz, window_size=200):
     """
     VIO (ORB-SLAM3) живёт в собственной произвольной системе координат,
-    привязанной к точке инициализации трекинга, и дрейфует со временем без
-    loop closure. Периодически переоцениваем transform каждые window_size
+    привязанной к точке инициализации трекинга, дрейфует со временем без
+    loop closure, И имеет систематическую ошибку МАСШТАБА (типично для
+    монокулярного SLAM без knowledge реального размера сцены). Периодически
+    переоцениваем rotation+translation+scale transform каждые window_size
     сэмплов — имитирует реальное поведение EKF, где VIO постоянно
     подкорректируется внешними источниками (GPS), вместо накопления
     всего дрейфа за всю траекторию полёта.
@@ -105,8 +121,8 @@ def align_vio_to_world(vio_xyz, gt_xyz, window_size=200):
 
     for start in range(0, n, window_size):
         end = min(start + window_size, n)
-        R, t = kabsch_align(vio_xyz[start:end], gt_xyz[start:end])
-        aligned[start:end] = (R @ vio_xyz[start:end].T).T + t
+        R, t, scale = kabsch_align(vio_xyz[start:end], gt_xyz[start:end])
+        aligned[start:end] = (scale * R @ vio_xyz[start:end].T).T + t
 
     return aligned
 
