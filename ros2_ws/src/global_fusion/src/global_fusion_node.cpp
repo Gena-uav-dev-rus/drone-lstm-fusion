@@ -20,6 +20,8 @@
 #include "nav_msgs/msg/odometry.hpp"
 #include "std_msgs/msg/float32.hpp"
 #include "px4_msgs/msg/sensor_gps.hpp"
+#include "px4_msgs/msg/vehicle_odometry.hpp"
+#include "px4_msgs/msg/timesync_status.hpp"
 
 #include "global_fusion/ekf.hpp"
 
@@ -51,6 +53,27 @@ public:
 
         pub_odometry_ = this->create_publisher<nav_msgs::msg::Odometry>(
             "/global_odometry", 10);
+
+        // Публикуем тот же fused estimate в PX4 через vehicle_visual_odometry,
+        // чтобы наш LSTM-адаптивный EKF реально участвовал в управлении полётом,
+        // не только логировался. PX4 требует BEST_EFFORT QoS на входящих топиках.
+        rclcpp::QoS px4_in_qos(10);
+        px4_in_qos.best_effort();
+        pub_px4_odometry_ = this->create_publisher<px4_msgs::msg::VehicleOdometry>(
+            "/fmu/in/vehicle_visual_odometry", px4_in_qos);
+
+        // Подписка на timesync_status для конвертации ROS time -> PX4 internal time.
+        // КРИТИЧНО: PX4 EKF2 ожидает timestamp в своей собственной clock domain
+        // (микросекунды с момента старта PX4), а не Unix epoch ROS clock —
+        // несовпадение вызывает катастрофические скачки позиции в EKF2.
+        rclcpp::QoS timesync_qos(10);
+        timesync_qos.best_effort();
+        sub_timesync_ = this->create_subscription<px4_msgs::msg::TimesyncStatus>(
+            "/fmu/out/timesync_status", timesync_qos,
+            [this](const px4_msgs::msg::TimesyncStatus::SharedPtr msg) {
+                px4_time_offset_us_ = msg->estimated_offset;
+                timesync_received_ = true;
+            });
 
         // Подписки на LSTM-предсказанную variance (Этап 4) — заменяют
         // фиксированные R-константы динамическими значениями в реальном времени
@@ -229,6 +252,45 @@ private:
         msg.twist.twist.linear.z = vel.z();
 
         pub_odometry_->publish(msg);
+
+        // Публикуем также в PX4 как vehicle_visual_odometry, чтобы наш
+        // fused estimate реально использовался PX4 EKF2 для управления,
+        // не только логировался в /global_odometry для анализа.
+        // КРИТИЧНО: не публикуем пока не получен хотя бы один timesync_status —
+        // иначе timestamp будет в неправильной clock domain (см. install_notes.md,
+        // инцидент с дрейфом 866м из-за рассинхронизации ~20 дней).
+        if (!timesync_received_) {
+            return;
+        }
+
+        px4_msgs::msg::VehicleOdometry px4_msg;
+        int64_t ros_time_us = static_cast<int64_t>(stamp.nanoseconds() / 1000);
+        px4_msg.timestamp = static_cast<uint64_t>(ros_time_us + px4_time_offset_us_);
+        px4_msg.timestamp_sample = px4_msg.timestamp;
+        px4_msg.pose_frame = px4_msgs::msg::VehicleOdometry::POSE_FRAME_NED;
+        px4_msg.position = {
+            static_cast<float>(pos.x()),
+            static_cast<float>(pos.y()),
+            static_cast<float>(pos.z())
+        };
+        px4_msg.q = {
+            static_cast<float>(q.w()),
+            static_cast<float>(q.x()),
+            static_cast<float>(q.y()),
+            static_cast<float>(q.z())
+        };
+        px4_msg.velocity_frame = px4_msgs::msg::VehicleOdometry::VELOCITY_FRAME_NED;
+        px4_msg.velocity = {
+            static_cast<float>(vel.x()),
+            static_cast<float>(vel.y()),
+            static_cast<float>(vel.z())
+        };
+        px4_msg.position_variance = {1.0f, 1.0f, 1.0f};
+        px4_msg.orientation_variance = {0.1f, 0.1f, 0.1f};
+        px4_msg.velocity_variance = {0.5f, 0.5f, 0.5f};
+        px4_msg.quality = 100;
+
+        pub_px4_odometry_->publish(px4_msg);
     }
 
     std::shared_ptr<global_fusion::EKF> ekf_;
@@ -238,6 +300,10 @@ private:
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub_vio_;
     rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr sub_depth_;
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odometry_;
+    rclcpp::Publisher<px4_msgs::msg::VehicleOdometry>::SharedPtr pub_px4_odometry_;
+    rclcpp::Subscription<px4_msgs::msg::TimesyncStatus>::SharedPtr sub_timesync_;
+    int64_t px4_time_offset_us_ = 0;
+    bool timesync_received_ = false;
 
     rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr sub_gps_variance_;
     rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr sub_vio_variance_;

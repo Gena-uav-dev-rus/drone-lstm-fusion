@@ -408,3 +408,47 @@ ROS 2 cv_bridge требует numpy<2, а Depth Anything зависимости
   для продолжения к Этапу 5, SuperPoint — будущее улучшение
 - ПЛАН ВОЗВРАТА: после Этапа 5, либо при переходе на реальное железо если
   понадобится больше робастности VIO (плохое освещение, motion blur)
+
+### Этап 5 — диагностика timestamp/sim_time проблемы (продолжение)
+- ПОДТВЕРЖДЕНО: timestamp синхронизация была корневой причиной краха при
+  первом тесте vehicle_visual_odometry (offset ~20 дней между ROS wall-clock
+  и PX4 internal clock)
+- ФИКС ЧАСТИЧНЫЙ: добавлена подписка на /fmu/out/timesync_status в
+  global_fusion_node.cpp, px4_time_offset_us_ применяется к timestamp перед
+  публикацией vehicle_visual_odometry. publishFusedOdometry() теперь не
+  публикует px4_msg пока timesync_received_ == false (защита от старта
+  с неправильным offset)
+- ПОСЛЕ ФИКСА: timestamp стал "0.000000 seconds ago" в `listener
+  vehicle_visual_odometry` (раньше было катастрофически рассинхронизировано) —
+  но при реальном взлёте всё равно "Attitude failure (roll)",
+  "Navigation failure!", "time sync no longer converged" циклически
+- ВЫВОД: одного timestamp offset фикса недостаточно — clock SYNC сам по себе
+  нестабилен под нагрузкой полного стека (Gazebo+ORB-SLAM3+Depth+LSTM+EKF
+  все разом могут проседать real_time_factor, ломая uXRCE-DDS time sync)
+- СЛЕДУЮЩИЙ ШАГ (в процессе): отключить UXRCE_DDS_SYNCT (param set
+  UXRCE_DDS_SYNCT 0 — уже применено в текущей сессии PX4, НЕ persified,
+  нужно сделать постоянным через файл параметров или стартовый скрипт)
+  + замостить /world/baylands/clock -> /clock (команда работает, см. ниже)
+  + запускать global_fusion_node и другие ROS2 ноды с --ros-args
+    -p use_sim_time:=true чтобы все использовали единый Gazebo sim time
+    вместо wall-clock хоста
+
+### Команды для следующей попытки (не доведено до конца теста)
+```bash
+# 1. В PX4 shell, перед взлётом:
+param set UXRCE_DDS_SYNCT 0
+
+# 2. Bridge clock (добавить в стартовый скрипт):
+ros2 run ros_gz_bridge parameter_bridge \
+  /world/baylands/clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock \
+  --ros-args -r /world/baylands/clock:=/clock
+
+# 3. global_fusion_node с use_sim_time (обновить в start_sim_headless.sh):
+ros2 run global_fusion global_fusion_node --ros-args -p use_sim_time:=true
+```
+
+### ВАЖНО: ничего не закоммичено в C++ коде сверх предыдущего timesync фикса
+(который уже собран и работает частично). Следующий шаг при возврате к этой
+задаче — полный цикл теста с UXRCE_DDS_SYNCT=0 + /clock bridge +
+use_sim_time=true для всех нод одновременно, ОСТОРОЖНО, маленькая высота
+взлёта (5-8м) для безопасного теста.
