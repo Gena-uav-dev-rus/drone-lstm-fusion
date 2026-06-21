@@ -22,6 +22,7 @@
 #include "px4_msgs/msg/sensor_gps.hpp"
 #include "px4_msgs/msg/vehicle_odometry.hpp"
 #include "px4_msgs/msg/timesync_status.hpp"
+#include "px4_msgs/msg/vehicle_attitude.hpp"
 
 #include "global_fusion/ekf.hpp"
 
@@ -73,6 +74,28 @@ public:
             [this](const px4_msgs::msg::TimesyncStatus::SharedPtr msg) {
                 px4_time_offset_us_ = msg->estimated_offset;
                 timesync_received_ = true;
+            });
+
+        // Калибруем начальную ориентацию EKF из PX4 internal attitude estimate
+        // (magnetometer-based), один раз при первом сообщении — иначе наш EKF
+        // стартует с Identity() quaternion (yaw=0), что может сильно расходиться
+        // с реальным heading дрона и вызывать "heading estimate not stable"
+        // в PX4 health checks при попытке использовать наш fused estimate.
+        rclcpp::QoS attitude_qos(10);
+        attitude_qos.best_effort();
+        sub_initial_attitude_ = this->create_subscription<px4_msgs::msg::VehicleAttitude>(
+            "/fmu/out/vehicle_attitude", attitude_qos,
+            [this](const px4_msgs::msg::VehicleAttitude::SharedPtr msg) {
+                if (initial_orientation_set_) return;
+
+                Eigen::Quaterniond q(msg->q[0], msg->q[1], msg->q[2], msg->q[3]);
+                ekf_->setInitialOrientation(q);
+                initial_orientation_set_ = true;
+
+                RCLCPP_INFO(this->get_logger(),
+                    "EKF initial orientation calibrated from PX4 attitude: "
+                    "w=%.3f x=%.3f y=%.3f z=%.3f",
+                    q.w(), q.x(), q.y(), q.z());
             });
 
         // Подписки на LSTM-предсказанную variance (Этап 4) — заменяют
@@ -256,16 +279,12 @@ private:
         // Публикуем также в PX4 как vehicle_visual_odometry, чтобы наш
         // fused estimate реально использовался PX4 EKF2 для управления,
         // не только логировался в /global_odometry для анализа.
-        // КРИТИЧНО: не публикуем пока не получен хотя бы один timesync_status —
-        // иначе timestamp будет в неправильной clock domain (см. install_notes.md,
-        // инцидент с дрейфом 866м из-за рассинхронизации ~20 дней).
-        if (!timesync_received_) {
-            return;
-        }
-
+        // С use_sim_time:=true и UXRCE_DDS_SYNCT=0, ROS2 clock и PX4 internal
+        // clock оба синхронизированы с единым Gazebo /clock — offset через
+        // timesync_status больше не нужен (раньше требовался, см. install_notes.md
+        // про инцидент с дрейфом 866м из-за рассинхронизации wall-clock vs PX4 time).
         px4_msgs::msg::VehicleOdometry px4_msg;
-        int64_t ros_time_us = static_cast<int64_t>(stamp.nanoseconds() / 1000);
-        px4_msg.timestamp = static_cast<uint64_t>(ros_time_us + px4_time_offset_us_);
+        px4_msg.timestamp = static_cast<uint64_t>(stamp.nanoseconds() / 1000);
         px4_msg.timestamp_sample = px4_msg.timestamp;
         px4_msg.pose_frame = px4_msgs::msg::VehicleOdometry::POSE_FRAME_NED;
         px4_msg.position = {
@@ -304,6 +323,9 @@ private:
     rclcpp::Subscription<px4_msgs::msg::TimesyncStatus>::SharedPtr sub_timesync_;
     int64_t px4_time_offset_us_ = 0;
     bool timesync_received_ = false;
+
+    rclcpp::Subscription<px4_msgs::msg::VehicleAttitude>::SharedPtr sub_initial_attitude_;
+    bool initial_orientation_set_ = false;
 
     rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr sub_gps_variance_;
     rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr sub_vio_variance_;

@@ -44,6 +44,11 @@ public:
     Eigen::Vector3d getPosition() const { return nominal_position_; }
     Eigen::Vector3d getVelocity() const { return nominal_velocity_; }
     Eigen::Quaterniond getOrientation() const { return nominal_orientation_; }
+
+    // Устанавливает начальную ориентацию EKF (используется один раз при старте,
+    // чтобы избежать "heading estimate not stable" из-за расхождения с PX4
+    // internal magnetometer-based yaw estimate, см. install_notes.md)
+    void setInitialOrientation(const Eigen::Quaterniond& q) { nominal_orientation_ = q; }
     Eigen::Matrix<double, STATE_DIM, STATE_DIM> getCovariance() const { return P_; }
 
     // --- Настройка R-матриц (шум измерений) ---
