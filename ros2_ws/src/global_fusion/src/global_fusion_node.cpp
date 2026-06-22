@@ -28,6 +28,7 @@
 
 #include <Eigen/Dense>
 #include <cmath>
+#include <limits>
 
 using std::placeholders::_1;
 
@@ -353,11 +354,19 @@ private:
         int64_t ros_time_us = stamp.nanoseconds() / 1000;
         px4_msg.timestamp = static_cast<uint64_t>(ros_time_us + px4_time_offset_us_);
         px4_msg.timestamp_sample = px4_msg.timestamp;
+        // Архитектурное решение: публикуем в PX4 ТОЛЬКО velocity и yaw из VIO,
+        // НЕ position. PX4 берёт position из GPS (он в этом надёжнее), мы
+        // дополняем velocity (VIO даёт более плавную/высокочастотную скорость)
+        // и yaw (ориентация из нашего EKF с blendYawCorrection). Это исключает
+        // конфликт позиций между нашим EKF и PX4 GPS, который вызывал
+        // "Navigation failure" при взлёте (см. install_notes.md).
+        // EKF2_EV_CTRL=12 (биты 2+3 = velocity+yaw, без position).
+        // Position поля заполняем NaN — PX4 игнорирует поля с NaN.
         px4_msg.pose_frame = px4_msgs::msg::VehicleOdometry::POSE_FRAME_NED;
         px4_msg.position = {
-            static_cast<float>(pos.x()),
-            static_cast<float>(pos.y()),
-            static_cast<float>(pos.z())
+            std::numeric_limits<float>::quiet_NaN(),
+            std::numeric_limits<float>::quiet_NaN(),
+            std::numeric_limits<float>::quiet_NaN()
         };
         px4_msg.q = {
             static_cast<float>(q.w()),
@@ -371,7 +380,11 @@ private:
             static_cast<float>(vel.y()),
             static_cast<float>(vel.z())
         };
-        px4_msg.position_variance = {1.0f, 1.0f, 1.0f};
+        px4_msg.position_variance = {
+            std::numeric_limits<float>::quiet_NaN(),
+            std::numeric_limits<float>::quiet_NaN(),
+            std::numeric_limits<float>::quiet_NaN()
+        };
         px4_msg.orientation_variance = {0.1f, 0.1f, 0.1f};
         px4_msg.velocity_variance = {0.5f, 0.5f, 0.5f};
         px4_msg.quality = 100;

@@ -42,10 +42,11 @@ tmux new-window -t drone -n 'depth'
 tmux send-keys -t drone:5 'source ~/drone-lstm-fusion/ros2_ws/install/setup.bash && source ~/depth_anything_venv/bin/activate && ros2 run depth_anything_ros2 depth_node.py' Enter
 sleep 5
 
-# 6: global_fusion
+# 6: global_fusion (ВРЕМЕННО ОТКЛЮЧЁН — диагностика прямого VIO->PX4 пути)
+# tmux new-window -t drone -n 'fusion'
+# tmux send-keys -t drone:6 'source ~/drone-lstm-fusion/ros2_ws/install/setup.bash && ros2 run global_fusion global_fusion_node --ros-args -p enable_gps_update:=false' Enter
+# sleep 3
 tmux new-window -t drone -n 'fusion'
-tmux send-keys -t drone:6 'source ~/drone-lstm-fusion/ros2_ws/install/setup.bash && ros2 run global_fusion global_fusion_node --ros-args -p enable_gps_update:=false' Enter
-sleep 3
 
 # 7: ground_truth bridge
 tmux new-window -t drone -n 'gt_bridge'
