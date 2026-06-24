@@ -23,7 +23,7 @@ sleep 25
 
 # 2: px4
 tmux new-window -t drone -n 'px4'
-tmux send-keys -t drone:2 'export DISPLAY=:0 && export GZ_SIM_RESOURCE_PATH=~/PX4-Autopilot/Tools/simulation/gz/models:~/PX4-Autopilot/Tools/simulation/gz/worlds && cd ~/PX4-Autopilot && PX4_GZ_WORLD=baylands PX4_GZ_STANDALONE=1 make px4_sitl gz_x500_mono_cam' Enter
+tmux send-keys -t drone:2 'export DISPLAY=:0 && export GZ_SIM_RESOURCE_PATH=~/PX4-Autopilot/Tools/simulation/gz/models:~/PX4-Autopilot/Tools/simulation/gz/worlds && cd ~/PX4-Autopilot && PX4_GZ_WORLD=baylands PX4_GZ_STANDALONE=1 make px4_sitl gz_x500_stereo_cam' Enter
 echo "Waiting for PX4 20 sec..."
 sleep 20
 
@@ -34,7 +34,7 @@ sleep 8
 
 # 4: slam
 tmux new-window -t drone -n 'slam'
-tmux send-keys -t drone:4 'source ~/drone-lstm-fusion/ros2_ws/install/setup.bash && ros2 run ros2_orb_slam3 mono_node_cpp --ros-args -p node_name_arg:=mono_slam -p voc_file_arg:=/home/sqwaer/drone-lstm-fusion/ros2_ws/src/ros2_orb_slam3/orb_slam3/Vocabulary/ORBvoc.txt.bin -p settings_file_path_arg:=/home/sqwaer/drone-lstm-fusion/ros2_ws/src/ros2_orb_slam3/orb_slam3/config/Monocular/' Enter
+tmux send-keys -t drone:4 'source ~/drone-lstm-fusion/ros2_ws/install/setup.bash && ros2 run ros2_orb_slam3 stereo_node_cpp --ros-args -p node_name_arg:=stereo_slam -p voc_file_arg:=/home/sqwaer/drone-lstm-fusion/ros2_ws/src/ros2_orb_slam3/orb_slam3/Vocabulary/ORBvoc.txt.bin -p settings_file_path_arg:=/home/sqwaer/drone-lstm-fusion/ros2_ws/src/ros2_orb_slam3/orb_slam3/config/Stereo/' Enter
 sleep 5
 
 # 5: depth
